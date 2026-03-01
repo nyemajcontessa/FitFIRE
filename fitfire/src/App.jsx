@@ -142,14 +142,37 @@ const RefCard = ({ label, body, url, source }) => (
   </div>
 );
 
+// Toggle switch component
+const Toggle = ({ label, value, onChange, note }) => (
+  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:C.s2,border:`1px solid ${C.brd}`,borderRadius:10,padding:"10px 14px",marginBottom:8}}>
+    <div>
+      <div style={{fontSize:12,color:value?"#fff":C.dim,fontWeight:value?600:400}}>{label}</div>
+      {note && <div style={{fontSize:10,color:C.dim,marginTop:2,fontFamily:"monospace",letterSpacing:"0.05em"}}>{note}</div>}
+    </div>
+    <div onClick={()=>onChange(!value)} style={{
+      width:44, height:24, borderRadius:12, cursor:"pointer", flexShrink:0,
+      background:value?"rgba(76,175,125,0.25)":"rgba(255,255,255,0.05)",
+      border:`1px solid ${value?C.grn:C.brd}`,
+      position:"relative", transition:"all 0.2s",
+    }}>
+      <div style={{
+        position:"absolute", top:3, left:value?22:3,
+        width:16, height:16, borderRadius:"50%",
+        background:value?C.grn:C.dim,
+        transition:"all 0.2s",
+      }}/>
+    </div>
+  </div>
+);
+
 // ─── DEFAULTS ─────────────────────────────────────────────────────────────────
 const DEFAULTS = {
   Y: {
     age:44, retire:55, salary:55000,
-    alm_bal:80000, alm_age:63,
-    itp_bal:250000, itp_sac:0,
-    sup_aud:80000,
-    isk_bal:150000, isk_mo:3000,
+    alm_bal:80000, alm_age:63,       alm_active:true,
+    itp_bal:250000, itp_sac:0,       itp_active:true,  itp_contrib:true,
+    sup_aud:80000,                    sup_active:true,
+    isk_bal:150000, isk_mo:3000,     isk_active:true,  isk_contrib:true,
     funds:[
       {name:"Fund 1", value:50000, currency:"SEK", cost_basis:35000},
       {name:"Fund 2", value:0,     currency:"EUR", cost_basis:0},
@@ -161,9 +184,9 @@ const DEFAULTS = {
   },
   P: {
     age:46, retire:55, salary:52000,
-    epf:120000,
-    dko_bal:180000, dko_sac:0,
-    ask_bal:80000, ask_mo:2000,
+    epf:120000,                       epf_active:true,  epf_contrib:false,
+    dko_bal:180000, dko_sac:0,       dko_active:true,  dko_contrib:true,
+    ask_bal:80000, ask_mo:2000,      ask_active:true,  ask_contrib:true,
     funds:[
       {name:"Fund 1", value:60000, currency:"DKK", cost_basis:45000},
       {name:"Fund 2", value:0,     currency:"EUR", cost_basis:0},
@@ -306,10 +329,10 @@ function Planner({ user, onSignOut }) {
   const y_yrs = Y.retire - Y.age;
   const p_yrs = P.retire - P.age;
 
-  const itp_p  = (fv(Y.itp_bal,ret,y_yrs) + fvAnn((Y.salary*0.10+Y.itp_sac)*12,ret,y_yrs)) * R.sek;
-  const alm_p  = fv(Y.alm_bal,0.025,Y.alm_age-Y.age) * R.sek;
-  const sup_p  = fv(Y.sup_aud,ret,60-Y.age) * R.aud;
-  const isk_p  = fvISK(Y.isk_bal,Y.isk_mo*12,ret,y_yrs) * R.sek;
+  const itp_p  = Y.itp_active  ? (fv(Y.itp_bal,ret,y_yrs) + (Y.itp_contrib  ? fvAnn((Y.salary*0.10+Y.itp_sac)*12,ret,y_yrs) : 0)) * R.sek : 0;
+  const alm_p  = Y.alm_active  ? fv(Y.alm_bal,0.025,Y.alm_age-Y.age) * R.sek : 0;
+  const sup_p  = Y.sup_active  ? fv(Y.sup_aud,ret,60-Y.age) * R.aud : 0;
+  const isk_p  = Y.isk_active  ? fvISK(Y.isk_bal, Y.isk_contrib ? Y.isk_mo*12 : 0, ret,y_yrs) * R.sek : 0;
   const yFunds = Y.funds.map(f=>f.value>0?toM(fvSE(f.value,ret,y_yrs,f.cost_basis||f.value),f.currency):0);
   const yFundT = yFunds.reduce((s,v)=>s+v,0);
   const yStk_p = toM(fvSE(Y.stk_val,ret,y_yrs,Y.stk_bas||Y.stk_val),Y.stk_cur);
@@ -324,9 +347,9 @@ function Planner({ user, onSignOut }) {
   const sup_mo = moFromPot(sup_p,rl,Math.max(1,R.yrs-5));
   const alm_mo = moFromPot(alm_p,rl,Math.max(1,R.yrs-(Y.alm_age-55)));
 
-  const epf_p  = fv(P.epf,ret,p_yrs) + fvAnn((P.salary*R.dkk)*0.23*12,ret,p_yrs);
-  const dko_p  = (fv(P.dko_bal,ret,64-P.age)+fvAnn(P.dko_sac*12,ret,64-P.age))*R.dkk;
-  const ask_p  = fvASK(P.ask_bal,P.ask_mo*12,ret,p_yrs)*R.dkk;
+  const epf_p  = P.epf_active  ? (fv(P.epf,ret,p_yrs) + (P.epf_contrib  ? fvAnn((P.salary*R.dkk)*0.23*12,ret,p_yrs) : 0)) : 0;
+  const dko_p  = P.dko_active  ? (fv(P.dko_bal,ret,64-P.age) + (P.dko_contrib ? fvAnn(P.dko_sac*12,ret,64-P.age) : 0))*R.dkk : 0;
+  const ask_p  = P.ask_active  ? fvASK(P.ask_bal, P.ask_contrib ? P.ask_mo*12 : 0, ret,p_yrs)*R.dkk : 0;
   const pFunds = P.funds.map(f=>f.value>0?toM(fvDK(f.value,ret,p_yrs),f.currency):0);
   const pFundT = pFunds.reduce((s,v)=>s+v,0);
   const pStk_p = toM(fvDK(P.stk_val,ret,p_yrs),P.stk_cur);
@@ -427,6 +450,9 @@ function Planner({ user, onSignOut }) {
                 <Pill label="ITP: from age 55" color={C.grn} />
                 <Pill label="SINK abroad: 25%" color={C.dim} />
               </div>
+              <Toggle label="Include Allmän Pension" value={Y.alm_active} onChange={v=>sy("alm_active",v)} note={Y.alm_active ? "Included in forecast" : "Excluded from forecast"} />
+              <Toggle label="Include ITP / ITPK" value={Y.itp_active} onChange={v=>sy("itp_active",v)} note={Y.itp_active ? "Included in forecast" : "Excluded from forecast"} />
+              {Y.itp_active && <Toggle label="Ongoing ITP employer contributions" value={Y.itp_contrib} onChange={v=>sy("itp_contrib",v)} note={Y.itp_contrib ? "10% salary + sacrifice modelled" : "Balance growth only — no new contributions"} />}
               <div style={gr(3,9)}>
                 <Field lbl="Allmän Balance SEK"   value={Y.alm_bal} onChange={v=>sy("alm_bal",v)} unit="Pensionsmyndigheten" note="Grows ~2.5%/yr" />
                 <Field lbl="Earliest Draw Age"    value={Y.alm_age} onChange={v=>sy("alm_age",v)} unit="min 63 currently" />
@@ -438,6 +464,7 @@ function Planner({ user, onSignOut }) {
                 <Pill label="Locked until 60" color={C.red} />
                 <Pill label="Tax-free at 60+" color={C.grn} />
               </div>
+              <Toggle label="Include Australian Super" value={Y.sup_active} onChange={v=>sy("sup_active",v)} note={Y.sup_active ? "Included as unlocking at age 60" : "Excluded from forecast"} />
               <div style={gr(2,9)}>
                 <Field lbl="Super Balance AUD" value={Y.sup_aud} onChange={v=>sy("sup_aud",v)} unit="no new contributions assumed" />
               </div>
@@ -448,9 +475,11 @@ function Planner({ user, onSignOut }) {
                 <Pill label="Zero exit CGT" color={C.grn} />
                 <Pill label="First SEK 150k free" color={C.grn} />
               </div>
+              <Toggle label="Include ISK" value={Y.isk_active} onChange={v=>sy("isk_active",v)} note={Y.isk_active ? "Included in forecast" : "Excluded from forecast"} />
+              {Y.isk_active && <Toggle label="Ongoing monthly top-ups" value={Y.isk_contrib} onChange={v=>sy("isk_contrib",v)} note={Y.isk_contrib ? "Monthly contributions modelled" : "Balance growth only — no new contributions"} />}
               <div style={gr(2,9)}>
                 <Field lbl="ISK Balance SEK"    value={Y.isk_bal} onChange={v=>sy("isk_bal",v)} unit="current balance" />
-                <Field lbl="Monthly Top-up SEK" value={Y.isk_mo}  onChange={v=>sy("isk_mo",v)}  unit="SEK/month" />
+                {Y.isk_active && Y.isk_contrib && <Field lbl="Monthly Top-up SEK" value={Y.isk_mo} onChange={v=>sy("isk_mo",v)} unit="SEK/month" />}
               </div>
             </Sec>
             <Sec id="y_funds" title="Funds — up to 3 (non-ISK depot)" accent={C.dim}>
@@ -495,8 +524,12 @@ function Planner({ user, onSignOut }) {
                 <Pill label="DK Occ: ~age 64" color={C.amb} />
                 <Pill label="ATP: locked ~67" color={C.red} />
               </div>
+              <Toggle label="Include EPF" value={P.epf_active} onChange={v=>sp("epf_active",v)} note={P.epf_active ? "Included in forecast" : "Excluded from forecast"} />
+              {P.epf_active && <Toggle label="Ongoing EPF contributions" value={P.epf_contrib} onChange={v=>sp("epf_contrib",v)} note={P.epf_contrib ? "23% of salary modelled (employer + employee)" : "Balance growth only — no new contributions"} />}
+              <Toggle label="Include DK Occupational Pension" value={P.dko_active} onChange={v=>sp("dko_active",v)} note={P.dko_active ? "Unlocks ~age 64" : "Excluded from forecast"} />
+              {P.dko_active && <Toggle label="Ongoing DK employer contributions" value={P.dko_contrib} onChange={v=>sp("dko_contrib",v)} note={P.dko_contrib ? "Salary sacrifice contributions modelled" : "Balance growth only — no new contributions"} />}
               <div style={gr(2,9)}>
-                <Field lbl="EPF Balance MYR"          value={P.epf}     onChange={v=>sp("epf",v)}     unit="accessible at 55" note="+23% salary contribution modelled" />
+                <Field lbl="EPF Balance MYR"          value={P.epf}     onChange={v=>sp("epf",v)}     unit="accessible at 55" note={P.epf_contrib ? "+23% salary contribution modelled" : "Growth only"} />
                 <Field lbl="DK Occupational Pen DKK"  value={P.dko_bal} onChange={v=>sp("dko_bal",v)} unit="from PensionsInfo.dk" />
               </div>
             </Sec>
@@ -505,9 +538,11 @@ function Planner({ user, onSignOut }) {
                 <Pill label="17% annual mark-to-market" color={C.amb} />
                 <Pill label="DKK 166,200 limit 2025" color={C.dim} />
               </div>
+              <Toggle label="Include ASK" value={P.ask_active} onChange={v=>sp("ask_active",v)} note={P.ask_active ? "Included in forecast" : "Excluded from forecast"} />
+              {P.ask_active && <Toggle label="Ongoing monthly top-ups" value={P.ask_contrib} onChange={v=>sp("ask_contrib",v)} note={P.ask_contrib ? "Monthly contributions modelled" : "Balance growth only — no new contributions"} />}
               <div style={gr(2,9)}>
                 <Field lbl="ASK Balance DKK"    value={P.ask_bal} onChange={v=>sp("ask_bal",v)} unit="DKK" />
-                <Field lbl="Monthly Top-up DKK" value={P.ask_mo}  onChange={v=>sp("ask_mo",v)}  unit="DKK/month" />
+                {P.ask_active && P.ask_contrib && <Field lbl="Monthly Top-up DKK" value={P.ask_mo} onChange={v=>sp("ask_mo",v)} unit="DKK/month" />}
               </div>
             </Sec>
             <Sec id="p_funds" title="Funds — up to 3 (regular depot)" accent={C.dim}>
